@@ -23,7 +23,6 @@ func New(serviceInfo *info.ServiceInfo) *Engine {
 }
 
 func (e *Engine) Run() (err error) {
-	e.Regist(uint32(route.))
 	connectRedis(config.REDIS_ADDR, config.REDIS_PASS, config.REDIS_DB)
 	e.registerMonitor()
 
