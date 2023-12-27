@@ -6,18 +6,25 @@ import (
 	"fmt"
 	"net/http"
 	"service/packet"
+	"service/info"
 )
 
-func registerMonitorHandler() {
+func (e *Engine) registerMonitor() {
+	msgChan := rds.Subscribe(e.serviceInfo.Name).Channel()
+	go func() {
+		for msg := range msgChan {
+			msg := packet.UnPack([]byte(msg.String()))
+			e.RouteTable.Process(msg)
+		}
+	}()
+
 	http.HandleFunc("/heart-beat", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 }
 
-func RegistService(service *ServiceInfo) error {
-	registerMonitorHandler()
-
-	data, err := json.Marshal(service)
+func RegistService(serviceInfo *info.ServiceInfo) error {
+	data, err := json.Marshal(serviceInfo)
 	if err != nil {
 		return err
 	}
@@ -28,41 +35,38 @@ func RegistService(service *ServiceInfo) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("regist %s error with code %d", service.Name, resp.StatusCode)
+		return fmt.Errorf("regist %s error with code %d", serviceInfo.Name, resp.StatusCode)
 	}
 
-	err = provider.parseServiceInfos(resp.Body)
+	err = provider.ParseServiceInfos(resp.Body)
 	if err != nil {
 		return err
 	}
 
-	provider.dump()
+	provider.Dump()
 
-	data, err = packet.JsonMarshal(packet.ADD, service)
-	if err != nil {
-		return err
-	}
+	data = packet.Pack(packet.NewMessage(packet.ADD, data))
 
-	err = rds.Publish(service.Name, data).Err()
+	err = rds.Publish(serviceInfo.Name, data).Err()
 
 	return err
 }
 
-func UnregistService(service *ServiceInfo) error {
-	data, err := packet.JsonMarshal(packet.ADD, service)
+func UnregistService(serviceInfo *info.ServiceInfo) error {
+	data, err := packet.JsonMarshal(packet.ADD, serviceInfo)
 	if err != nil {
 		return err
 	}
 
-	err = rds.Publish(service.Name, data).Err()
+	err = rds.Publish(serviceInfo.Name, data).Err()
 
 	return err
 }
 
-var provider = newServiceTable()
+var provider = info.NewServiceTable()
 
 func Get(serviceName string) string {
-	service := provider.get(serviceName)
+	service := provider.Get(serviceName)
 	if service != nil {
 		return service.Addr
 	}

@@ -6,33 +6,46 @@ import (
 	"fmt"
 	"net/http"
 	"service/config"
+	"service/info"
+	"service/route"
 )
 
-type Service interface {
-	Init()
+type Engine struct {
+	serviceInfo *info.ServiceInfo
+	route.RouteTable
 }
 
-func Run(service *ServiceInfo) (err error) {
+func New(serviceInfo *info.ServiceInfo) *Engine {
+	return &Engine{
+		serviceInfo: serviceInfo,
+		RouteTable: make(route.RouteTable, 0),
+	}
+}
+
+func (e *Engine) Run() (err error) {
+	e.Regist(uint32(route.))
 	connectRedis(config.REDIS_ADDR, config.REDIS_PASS, config.REDIS_DB)
-	
-	err = RegistService(service)
+	e.registerMonitor()
+
+	err = RegistService(e.serviceInfo)
 	if err != nil {
 		return err
 	}
+
 	defer func() {
-		err = errors.Join(err, UnregistService(service))
+		err = errors.Join(err, UnregistService(e.serviceInfo))
 	}()
 
-	srv := http.Server{Addr: service.Addr}
+	server := http.Server{Addr: e.serviceInfo.Addr}
 
 	go func() {
 		fmt.Println("Press any key to stop.")
 		var s string
 		fmt.Scan(&s)
-		srv.Shutdown(context.Background())
+		server.Shutdown(context.Background())
 	}()
 
-	err = srv.ListenAndServe()
+	err = server.ListenAndServe()
 	if err != nil {
 		return err
 	}
